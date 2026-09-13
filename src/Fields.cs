@@ -48,8 +48,8 @@ namespace StoreMapDemo
                 MultiSelect = false,
                 BorderStyle = BorderStyle.FixedSingle,
                 EnableHeadersVisualStyles = false,
-                ColumnHeadersHeight = 30,
-                RowTemplate = { Height = 26 },
+                ColumnHeadersHeight = LogicalToDeviceUnits(30),
+                RowTemplate = { Height = LogicalToDeviceUnits(26) },
             };
             grid.Columns.Add(C("label", "表示名", 160));
             grid.Columns.Add(C("api", "変数名", 120));
@@ -83,11 +83,11 @@ namespace StoreMapDemo
             Reload();
         }
 
-        static DataGridViewTextBoxColumn C(string name, string header, int width)
+        DataGridViewTextBoxColumn C(string name, string header, int width)
         {
             return new DataGridViewTextBoxColumn
             {
-                Name = name, HeaderText = header, Width = width,
+                Name = name, HeaderText = header, Width = LogicalToDeviceUnits(width),
                 SortMode = DataGridViewColumnSortMode.NotSortable,
             };
         }

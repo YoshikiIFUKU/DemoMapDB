@@ -31,6 +31,11 @@ namespace StoreMapDemo
 
         public event EventHandler<StoreEventArgs> StoreClicked;
 
+        /// <summary>画面のDPIに合わせた倍率（96dpi を 1 とする）。ピンや文字の余白の計算に使う。</summary>
+        float S { get { return DeviceDpi / 96f; } }
+
+        int Px(double px) { return (int)Math.Round(px * S); }
+
         public MapPanel()
         {
             DoubleBuffered = true;
@@ -216,12 +221,12 @@ namespace StoreMapDemo
             foreach (var n in results)
             {
                 var p = ToScreen(new GeoPoint(n.Store.Lat, n.Store.Lng));
-                if (Math.Abs(p.X - pt.X) <= 11 && pt.Y <= p.Y + 2 && pt.Y >= p.Y - 26) return n.Store;
+                if (Math.Abs(p.X - pt.X) <= Px(11) && pt.Y <= p.Y + Px(2) && pt.Y >= p.Y - Px(26)) return n.Store;
             }
             foreach (var s in allStores)
             {
                 var p = ToScreen(new GeoPoint(s.Lat, s.Lng));
-                if (Math.Abs(p.X - pt.X) <= 6 && Math.Abs(p.Y - pt.Y) <= 6) return s;
+                if (Math.Abs(p.X - pt.X) <= Px(6) && Math.Abs(p.Y - pt.Y) <= Px(6)) return s;
             }
             return null;
         }
@@ -267,14 +272,14 @@ namespace StoreMapDemo
                 {
                     float sx = ToScreen(new GeoPoint(center.Lat, x)).X;
                     g.DrawLine(pen, sx, 0, sx, ClientSize.Height);
-                    g.DrawString("東経" + x.ToString("0.###"), f, br, sx + 2, ClientSize.Height - 14);
+                    g.DrawString("東経" + x.ToString("0.###"), f, br, sx + 2, ClientSize.Height - Px(15));
                 }
                 double top = ToGeo(new Point(0, 0)).Lat, bottom = ToGeo(new Point(0, ClientSize.Height)).Lat;
                 for (double y = Math.Floor(bottom / step) * step; y <= top; y += step)
                 {
                     float sy = ToScreen(new GeoPoint(y, center.Lng)).Y;
                     g.DrawLine(pen, 0, sy, ClientSize.Width, sy);
-                    g.DrawString("北緯" + y.ToString("0.###"), f, br, 3, sy - 13);
+                    g.DrawString("北緯" + y.ToString("0.###"), f, br, 3, sy - Px(14));
                 }
             }
         }
@@ -304,9 +309,9 @@ namespace StoreMapDemo
                 for (int i = 1; i <= 4; i++)
                 {
                     float r = (float)(ring * i * pxPerKm);
-                    if (r < 12 || r > Math.Max(ClientSize.Width, ClientSize.Height) * 1.5) continue;
+                    if (r < Px(12) || r > Math.Max(ClientSize.Width, ClientSize.Height) * 1.5) continue;
                     g.DrawEllipse(pen, c.X - r, c.Y - r, r * 2, r * 2);
-                    g.DrawString(GeoMath.FormatKm(ring * i), f, br, c.X + 3, c.Y - r - 13);
+                    g.DrawString(GeoMath.FormatKm(ring * i), f, br, c.X + Px(3), c.Y - r - Px(14));
                 }
             }
         }
@@ -326,9 +331,10 @@ namespace StoreMapDemo
                     if (shown.Contains(s.Id)) continue;
                     var p = ToScreen(new GeoPoint(s.Lat, s.Lng));
                     if (p.X < -30 || p.Y < -30 || p.X > ClientSize.Width + 30 || p.Y > ClientSize.Height + 30) continue;
-                    g.FillEllipse(br, p.X - 3.5f, p.Y - 3.5f, 7, 7);
-                    g.DrawEllipse(pen, p.X - 3.5f, p.Y - 3.5f, 7, 7);
-                    if (pxPerKm > 12) g.DrawString(s.Name, f, tb, p.X + 6, p.Y - 7);
+                    float r = 3.5f * S;
+                    g.FillEllipse(br, p.X - r, p.Y - r, r * 2, r * 2);
+                    g.DrawEllipse(pen, p.X - r, p.Y - r, r * 2, r * 2);
+                    if (pxPerKm > 12) g.DrawString(s.Name, f, tb, p.X + Px(6), p.Y - Px(7));
                 }
             }
         }
@@ -348,15 +354,17 @@ namespace StoreMapDemo
                     string label = n.Store.Name + "  " + n.DistanceText;
                     var size = g.MeasureString(label, nameFont);
                     // 右端にはみ出すときはピンの左側に出す
-                    float lx = p.X + 12 + size.Width + 8 > ClientSize.Width - 4 ? p.X - 12 - size.Width - 8 : p.X + 12;
-                    var rect = PlaceLabel(new RectangleF(lx, p.Y - 34, size.Width + 8, size.Height + 2));
+                    float pad = Px(8), off = Px(12);
+                    float lx = p.X + off + size.Width + pad > ClientSize.Width - Px(4)
+                        ? p.X - off - size.Width - pad : p.X + off;
+                    var rect = PlaceLabel(new RectangleF(lx, p.Y - Px(34), size.Width + pad, size.Height + 2));
                     using (var bg = new SolidBrush(Color.FromArgb(Theme.IsDark ? 200 : 225, Theme.IsDark ? Color.FromArgb(20, 24, 30) : Color.White)))
                     using (var pen = new Pen(Theme.Border))
                     using (var tb = new SolidBrush(Theme.Fore))
                     {
                         g.FillRectangle(bg, rect);
                         g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
-                        g.DrawString(label, nameFont, tb, rect.X + 4, rect.Y + 1);
+                        g.DrawString(label, nameFont, tb, rect.X + Px(4), rect.Y + 1);
                     }
                 }
             }
@@ -374,12 +382,13 @@ namespace StoreMapDemo
             return rect;
         }
 
-        static void DrawPin(Graphics g, PointF p, Color fill, string text, Font font)
+        void DrawPin(Graphics g, PointF p, Color fill, string text, Font font)
         {
+            float s = S;
             var path = new GraphicsPath();
-            path.AddArc(p.X - 9, p.Y - 26, 18, 18, 150, 240);   // 頭の丸
-            path.AddLine(p.X + 6.5f, p.Y - 10.5f, p.X, p.Y);     // 先端
-            path.AddLine(p.X, p.Y, p.X - 6.5f, p.Y - 10.5f);
+            path.AddArc(p.X - 9 * s, p.Y - 26 * s, 18 * s, 18 * s, 150, 240);   // 頭の丸
+            path.AddLine(p.X + 6.5f * s, p.Y - 10.5f * s, p.X, p.Y);            // 先端
+            path.AddLine(p.X, p.Y, p.X - 6.5f * s, p.Y - 10.5f * s);
             path.CloseFigure();
             using (var br = new SolidBrush(fill))
             using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
@@ -390,7 +399,7 @@ namespace StoreMapDemo
             using (var tb = new SolidBrush(Color.White))
             {
                 var sz = g.MeasureString(text, font);
-                g.DrawString(text, font, tb, p.X - sz.Width / 2, p.Y - 24);
+                g.DrawString(text, font, tb, p.X - sz.Width / 2, p.Y - 24 * s);
             }
             path.Dispose();
         }
@@ -401,15 +410,16 @@ namespace StoreMapDemo
             if (origin.IsEmpty) return;
             var p = ToScreen(origin);
             Color red = Color.FromArgb(214, 58, 48);
-            using (var pen = new Pen(red, 2f))
+            float s = S;
+            using (var pen = new Pen(red, 2f * s))
             using (var br = new SolidBrush(Color.FromArgb(70, red)))
             {
-                g.FillEllipse(br, p.X - 11, p.Y - 11, 22, 22);
-                g.DrawEllipse(pen, p.X - 7, p.Y - 7, 14, 14);
-                g.DrawLine(pen, p.X - 14, p.Y, p.X - 9, p.Y);
-                g.DrawLine(pen, p.X + 9, p.Y, p.X + 14, p.Y);
-                g.DrawLine(pen, p.X, p.Y - 14, p.X, p.Y - 9);
-                g.DrawLine(pen, p.X, p.Y + 9, p.X, p.Y + 14);
+                g.FillEllipse(br, p.X - 11 * s, p.Y - 11 * s, 22 * s, 22 * s);
+                g.DrawEllipse(pen, p.X - 7 * s, p.Y - 7 * s, 14 * s, 14 * s);
+                g.DrawLine(pen, p.X - 14 * s, p.Y, p.X - 9 * s, p.Y);
+                g.DrawLine(pen, p.X + 9 * s, p.Y, p.X + 14 * s, p.Y);
+                g.DrawLine(pen, p.X, p.Y - 14 * s, p.X, p.Y - 9 * s);
+                g.DrawLine(pen, p.X, p.Y + 9 * s, p.X, p.Y + 14 * s);
             }
             if (originLabel.Length > 0)
             {
@@ -419,10 +429,11 @@ namespace StoreMapDemo
                 {
                     string label = "検索地点  " + originLabel;
                     var size = g.MeasureString(label, f);
-                    float ox = p.X + 14 + size.Width + 8 > ClientSize.Width - 4 ? p.X - 14 - size.Width - 8 : p.X + 14;
-                    var rect = PlaceLabel(new RectangleF(ox, p.Y + 6, size.Width + 8, size.Height + 2));
+                    float ox = p.X + Px(14) + size.Width + Px(8) > ClientSize.Width - Px(4)
+                        ? p.X - Px(14) - size.Width - Px(8) : p.X + Px(14);
+                    var rect = PlaceLabel(new RectangleF(ox, p.Y + Px(6), size.Width + Px(8), size.Height + 2));
                     g.FillRectangle(bg, rect);
-                    g.DrawString(label, f, tb, rect.X + 4, rect.Y + 1);
+                    g.DrawString(label, f, tb, rect.X + Px(4), rect.Y + 1);
                 }
             }
         }
@@ -430,27 +441,28 @@ namespace StoreMapDemo
         /// <summary>縮尺バーと方位</summary>
         void DrawScaleBar(Graphics g)
         {
-            double targetPx = Math.Min(160, ClientSize.Width * 0.3);
+            double targetPx = Math.Min(160 * S, ClientSize.Width * 0.3);
             double km = NiceStep(targetPx / pxPerKm);
             float px = (float)(km * pxPerKm);
-            float x = ClientSize.Width - px - 18, y = ClientSize.Height - 26;
+            float x = ClientSize.Width - px - Px(18), y = ClientSize.Height - Px(26);
 
-            using (var pen = new Pen(Theme.Fore, 1.6f))
+            using (var pen = new Pen(Theme.Fore, 1.6f * S))
             using (var f = new Font("Yu Gothic UI", 8f))
             using (var br = new SolidBrush(Theme.Fore))
             {
                 g.DrawLine(pen, x, y, x + px, y);
-                g.DrawLine(pen, x, y - 4, x, y + 4);
-                g.DrawLine(pen, x + px, y - 4, x + px, y + 4);
+                g.DrawLine(pen, x, y - Px(4), x, y + Px(4));
+                g.DrawLine(pen, x + px, y - Px(4), x + px, y + Px(4));
                 string t = GeoMath.FormatKm(km);
-                g.DrawString(t, f, br, x + px / 2 - g.MeasureString(t, f).Width / 2, y - 18);
+                var ts = g.MeasureString(t, f);
+                g.DrawString(t, f, br, x + px / 2 - ts.Width / 2, y - ts.Height - Px(2));
 
                 // 方位（上が北）
-                float nx = 20, ny = 22;
-                g.DrawLine(pen, nx, ny + 12, nx, ny - 10);
-                g.DrawLine(pen, nx, ny - 10, nx - 4, ny - 4);
-                g.DrawLine(pen, nx, ny - 10, nx + 4, ny - 4);
-                g.DrawString("N", f, br, nx - 5, ny + 12);
+                float nx = Px(20), ny = Px(22);
+                g.DrawLine(pen, nx, ny + Px(12), nx, ny - Px(10));
+                g.DrawLine(pen, nx, ny - Px(10), nx - Px(4), ny - Px(4));
+                g.DrawLine(pen, nx, ny - Px(10), nx + Px(4), ny - Px(4));
+                g.DrawString("N", f, br, nx - Px(5), ny + Px(12));
             }
         }
 
@@ -460,7 +472,7 @@ namespace StoreMapDemo
             using (var f = new Font("Yu Gothic UI", 8f))
             using (var br = new SolidBrush(Theme.SubText))
             {
-                g.DrawString("ホイールで拡大縮小 / ドラッグで移動 / ダブルクリックで全体表示", f, br, 40, 6);
+                g.DrawString("ホイールで拡大縮小 / ドラッグで移動 / ダブルクリックで全体表示", f, br, Px(40), Px(6));
             }
         }
 
@@ -483,10 +495,11 @@ namespace StoreMapDemo
 
             using (var f = new Font("Yu Gothic UI", 8.5f))
             {
-                float w = lines.Max(l => g.MeasureString(l, f).Width) + 14;
-                float h = lines.Count * 16 + 10;
-                float x = Math.Min(mouse.X + 16, ClientSize.Width - w - 4);
-                float y = Math.Min(mouse.Y + 16, ClientSize.Height - h - 4);
+                float lineH = g.MeasureString("あ", f).Height + Px(2);
+                float w = lines.Max(l => g.MeasureString(l, f).Width) + Px(14);
+                float h = lines.Count * lineH + Px(10);
+                float x = Math.Min(mouse.X + Px(16), ClientSize.Width - w - Px(4));
+                float y = Math.Min(mouse.Y + Px(16), ClientSize.Height - h - Px(4));
                 using (var bg = new SolidBrush(Theme.IsDark ? Color.FromArgb(245, 34, 38, 44) : Color.FromArgb(248, 255, 255, 255)))
                 using (var pen = new Pen(Theme.Border))
                 using (var tb = new SolidBrush(Theme.Fore))
@@ -495,7 +508,7 @@ namespace StoreMapDemo
                     g.FillRectangle(bg, x, y, w, h);
                     g.DrawRectangle(pen, x, y, w, h);
                     for (int i = 0; i < lines.Count; i++)
-                        g.DrawString(lines[i], f, i == 0 ? tb : sb, x + 7, y + 5 + i * 16);
+                        g.DrawString(lines[i], f, i == 0 ? tb : sb, x + Px(7), y + Px(5) + i * lineH);
                 }
             }
         }

@@ -40,6 +40,9 @@ namespace StoreMapDemo
         List<Nearby> results = new List<Nearby>();
         DateTime queryStamp = DateTime.MinValue;
         bool splitReady;
+        Control searchLabel;
+        Control[] searchOptions, searchButtons;
+        bool layingOut;
 
         public List<Nearby> CurrentResults { get { return results; } }
 
@@ -48,12 +51,10 @@ namespace StoreMapDemo
             this.store = store;
 
             Text = "DemoMapDB - 近隣店舗の検索";
-            ClientSize = new Size(1260, 760);
-            MinimumSize = new Size(900, 600);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Yu Gothic UI", 9f);
             KeyPreview = true;
-            Theme.Attach(this);
+            Theme.Attach(this);   // Load で DPI に合わせて拡大する。大きさと位置はそのあと決める
 
             BuildMenu();
             BuildSearchBar();
@@ -77,6 +78,9 @@ namespace StoreMapDemo
             watch = new Timer { Interval = 1200 };
             watch.Tick += (s, e) => CheckExternalChanges();
             watch.Start();
+
+            Load += delegate { ApplyWindowSize(); LayoutSearchBar(); };
+            ResizeEnd += delegate { SaveWindowBounds(); };
 
             RebuildColumns();
             ReloadStores();
@@ -152,6 +156,57 @@ namespace StoreMapDemo
             menu = ms;
         }
 
+        /// <summary>
+        /// 大きさと位置を決める（DPI に合わせた拡大のあとに呼ぶ）。
+        /// 前回の位置が今の画面に収まればそれを使い、無ければ作業領域（タスクバーを除く）の 92% までで中央に置く。
+        /// </summary>
+        void ApplyWindowSize()
+        {
+            var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+            MinimumSize = new Size(Math.Min(LogicalToDeviceUnits(820), work.Width),
+                                   Math.Min(LogicalToDeviceUnits(560), work.Height));
+            if (RestoreWindowBounds()) return;
+
+            var size = new Size(Math.Min(LogicalToDeviceUnits(1260), (int)(work.Width * 0.92)),
+                                Math.Min(LogicalToDeviceUnits(800), (int)(work.Height * 0.92)));
+            Bounds = new Rectangle(work.Left + (work.Width - size.Width) / 2,
+                                   work.Top + (work.Height - size.Height) / 2, size.Width, size.Height);
+        }
+
+        /// <summary>前回の大きさ・位置を復元する（いまつながっている画面に収まるときだけ）</summary>
+        bool RestoreWindowBounds()
+        {
+            try
+            {
+                var saved = Settings.GetRect("window");
+                if (saved.Width <= 0 || saved.Height <= 0) return false;
+                foreach (Screen sc in Screen.AllScreens)
+                {
+                    if (!sc.WorkingArea.IntersectsWith(saved)) continue;
+                    var work = sc.WorkingArea;
+                    var size = new Size(Math.Max(MinimumSize.Width, Math.Min(saved.Width, work.Width)),
+                                        Math.Max(MinimumSize.Height, Math.Min(saved.Height, work.Height)));
+                    var at = new Point(Math.Max(work.Left, Math.Min(saved.X, work.Right - size.Width)),
+                                       Math.Max(work.Top, Math.Min(saved.Y, work.Bottom - size.Height)));
+                    Bounds = new Rectangle(at, size);
+                    if (Settings.GetBool("window_max", false)) WindowState = FormWindowState.Maximized;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        void SaveWindowBounds()
+        {
+            try
+            {
+                Settings.Set("window_max", WindowState == FormWindowState.Maximized ? "1" : "0");
+                if (WindowState == FormWindowState.Normal) Settings.SetRect("window", Bounds);
+            }
+            catch { }
+        }
+
         static ToolStripMenuItem Item(string text, Keys keys, EventHandler onClick)
         {
             var mi = new ToolStripMenuItem(text, null, onClick);
@@ -163,21 +218,21 @@ namespace StoreMapDemo
         {
             var bar = new Panel { Dock = DockStyle.Top, Height = 74, Tag = "panel", Padding = new Padding(12, 8, 12, 8) };
 
-            var lb = new Label { Text = "住所", Left = 12, Top = 12, Width = 34, Tag = "accent", Font = new Font("Yu Gothic UI", 9f, FontStyle.Bold) };
+            var lb = new Label { Text = "住所", Left = 12, Top = 12, AutoSize = true, Tag = "accent", Font = new Font("Yu Gothic UI", 9f, FontStyle.Bold) };
             tbAddress = new TextBox { Left = 48, Top = 8, Width = 400, Font = new Font("Yu Gothic UI", 10.5f) };
             tbAddress.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoSearch(); } };
 
-            var lbN = new Label { Text = "件数", Left = 460, Top = 12, Width = 34 };
+            var lbN = new Label { Text = "件数", Left = 460, Top = 12, AutoSize = true };
             numCount = new NumericUpDown { Left = 496, Top = 8, Width = 56, Minimum = 1, Maximum = 50, Value = Settings.GetInt("count", 3) };
 
-            var lbC = new Label { Text = "しぼり込み", Left = 566, Top = 12, Width = 66 };
+            var lbC = new Label { Text = "しぼり込み", Left = 566, Top = 12, AutoSize = true };
             cbFilterField = new ComboBox { Left = 634, Top = 8, Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
             cbFilterValue = new ComboBox { Left = 748, Top = 8, Width = 130, DropDownStyle = ComboBoxStyle.DropDown };
             cbFilterField.SelectedIndexChanged += (s, e) => ReloadFilterValues();
 
             ckOpenNow = new CheckBox
             {
-                Text = "営業時間内のみ", Left = 886, Top = 11, Width = 120,
+                Text = "営業時間内のみ", Left = 886, Top = 11, AutoSize = true,
                 Checked = Settings.GetBool("open_now", false),
             };
             ckOpenNow.CheckedChanged += (s, e) => Settings.Set("open_now", ckOpenNow.Checked ? "1" : "0");
@@ -203,7 +258,101 @@ namespace StoreMapDemo
 
             bar.Controls.AddRange(new Control[]
                 { lb, tbAddress, lbN, numCount, lbC, cbFilterField, cbFilterValue, ckOpenNow, btn, btnClear, lbGeoInfo });
+            bar.Resize += delegate { LayoutSearchBar(); };
             searchBar = bar;
+            searchLabel = lb;
+            searchOptions = new Control[] { lbN, numCount, lbC, cbFilterField, cbFilterValue, ckOpenNow };
+            searchButtons = new Control[] { btn, btnClear };
+        }
+
+        /// <summary>
+        /// 検索バーは幅に合わせて並べ直す。
+        /// 広いときは1段（住所・件数・しぼり込み・ボタン）、狭いときは2段（1段目: 住所とボタン / 2段目: 件数・しぼり込み）。
+        /// 住所欄は残りの幅を埋める。部品の大きさは実際の値（DPIで拡大済み）から計算する。
+        /// </summary>
+        void LayoutSearchBar()
+        {
+            if (searchBar == null || searchOptions == null || layingOut) return;
+            layingOut = true;
+            try
+            {
+                var pad = searchBar.Padding;
+                int gap = Math.Max(4, pad.Left / 2);
+                int width = searchBar.ClientSize.Width;
+                int rowH = Math.Max(tbAddress.Height, searchButtons.Max(c => c.Height));
+                int minAddress = LogicalToDeviceUnits(260);
+
+                searchLabel.Left = pad.Left;
+                int addressLeft = searchLabel.Right + gap;
+
+                int optionsW = WidthOf(searchOptions, gap);
+                int buttonsW = WidthOf(searchButtons, gap);
+                bool oneRow = width - pad.Right - addressLeft - (optionsW + gap * 2 + buttonsW) - gap >= minAddress;
+
+                int row1 = pad.Top;
+                // ボタンは1段目の右端
+                int right = PlaceRightToLeft(searchButtons, width - pad.Right, row1, rowH, gap);
+                int nextTop;
+                if (oneRow)
+                {
+                    right = PlaceRightToLeft(searchOptions, right - gap * 2, row1, rowH, gap);
+                    nextTop = row1 + rowH;
+                }
+                else
+                {
+                    // 2段目に件数・しぼり込みを左から並べる
+                    int row2 = row1 + rowH + gap;
+                    int x = addressLeft;
+                    foreach (var c in searchOptions)
+                    {
+                        c.Left = x;
+                        c.Top = row2 + (rowH - c.Height) / 2;
+                        x = c.Right + (c is Label ? gap / 2 : gap + gap / 2);
+                    }
+                    nextTop = row2 + rowH;
+                }
+
+                CenterInRow(searchLabel, row1, rowH);
+                tbAddress.Left = addressLeft;
+                tbAddress.Top = row1 + (rowH - tbAddress.Height) / 2;
+                tbAddress.Width = Math.Max(LogicalToDeviceUnits(120), right - gap - addressLeft);
+
+                lbGeoInfo.Left = addressLeft;
+                lbGeoInfo.Top = nextTop + gap;
+                lbGeoInfo.Width = Math.Max(LogicalToDeviceUnits(120), width - pad.Right - addressLeft);
+
+                int height = lbGeoInfo.Bottom + pad.Bottom;
+                if (searchBar.Height != height) searchBar.Height = height;
+            }
+            finally { layingOut = false; }
+        }
+
+        static int WidthOf(Control[] controls, int gap)
+        {
+            int w = 0;
+            foreach (var c in controls) w += c.Width + (c is Label ? gap / 2 : gap + gap / 2);
+            return w;
+        }
+
+        /// <summary>右端 right から左へ詰めて並べ、いちばん左の部品の左端を返す</summary>
+        static int PlaceRightToLeft(Control[] controls, int right, int rowTop, int rowH, int gap)
+        {
+            int left = right;
+            for (int i = controls.Length - 1; i >= 0; i--)
+            {
+                var c = controls[i];
+                c.Left = right - c.Width;
+                c.Top = rowTop + (rowH - c.Height) / 2;
+                left = c.Left;
+                // 左隣がラベルなら、この部品の見出しなので詰めて置く
+                right = c.Left - (i > 0 && controls[i - 1] is Label ? gap / 2 : gap + gap / 2);
+            }
+            return left;
+        }
+
+        static void CenterInRow(Control c, int rowTop, int rowH)
+        {
+            c.Top = rowTop + (rowH - c.Height) / 2;
         }
 
         void BuildTabs()
@@ -222,17 +371,25 @@ namespace StoreMapDemo
         {
             pageStores = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 10, 12, 10) };
 
-            var top = new Panel { Dock = DockStyle.Top, Height = 38 };
-            var lb = new Label { Text = "絞り込み", Left = 0, Top = 9, Width = 60 };
-            tbFilter = new TextBox { Left = 62, Top = 5, Width = 220 };
+            // 幅が足りないときは折り返す（狭い画面・高DPIでもボタンが切れない）
+            var top = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = true,
+                Padding = new Padding(0, 0, 0, 6),
+            };
+            var lb = new Label { Text = "絞り込み", AutoSize = true, Margin = new Padding(0, 9, 4, 3) };
+            tbFilter = new TextBox { Width = 220, Margin = new Padding(0, 5, 16, 3) };
             tbFilter.TextChanged += (s, e) => ReloadStores();
 
-            var add = new Button { Text = "追加", Left = 300, Top = 4, Width = 76, Height = 27, Tag = "primary" };
-            var edit = new Button { Text = "編集", Left = 382, Top = 4, Width = 76, Height = 27 };
-            var del = new Button { Text = "削除", Left = 464, Top = 4, Width = 76, Height = 27 };
-            var onMap = new Button { Text = "地図で見る", Left = 546, Top = 4, Width = 100, Height = 27 };
-            var paste = new Button { Text = "CSVを貼り付けて取り込む", Left = 656, Top = 4, Width = 180, Height = 27 };
-            var fields = new Button { Text = "項目の設定", Left = 846, Top = 4, Width = 100, Height = 27 };
+            var add = new Button { Text = "追加", Width = 76, Height = 27, Tag = "primary", Margin = new Padding(0, 4, 6, 3) };
+            var edit = new Button { Text = "編集", Width = 76, Height = 27, Margin = new Padding(0, 4, 6, 3) };
+            var del = new Button { Text = "削除", Width = 76, Height = 27, Margin = new Padding(0, 4, 6, 3) };
+            var onMap = new Button { Text = "地図で見る", Width = 100, Height = 27, Margin = new Padding(0, 4, 10, 3) };
+            var paste = new Button { Text = "CSVを貼り付けて取り込む", Width = 180, Height = 27, Margin = new Padding(0, 4, 10, 3) };
+            var fields = new Button { Text = "項目の設定", Width = 100, Height = 27, Margin = new Padding(0, 4, 0, 3) };
             add.Click += (s, e) => EditStore(null);
             edit.Click += (s, e) => EditStore(SelectedStore());
             del.Click += (s, e) => DeleteStore();
@@ -317,16 +474,17 @@ namespace StoreMapDemo
                 BorderStyle = BorderStyle.FixedSingle,
                 EnableHeadersVisualStyles = false,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-                ColumnHeadersHeight = 30,
-                RowTemplate = { Height = 26 },
+                // 表の列幅・行の高さは画面の自動拡大の対象外なので、DPI の倍率を自分で掛ける
+                ColumnHeadersHeight = LogicalToDeviceUnits(30),
+                RowTemplate = { Height = LogicalToDeviceUnits(26) },
             };
         }
 
-        static DataGridViewTextBoxColumn Col(string name, string header, int width)
+        DataGridViewTextBoxColumn Col(string name, string header, int width)
         {
             return new DataGridViewTextBoxColumn
             {
-                Name = name, HeaderText = header, Width = width,
+                Name = name, HeaderText = header, Width = LogicalToDeviceUnits(width),
                 SortMode = DataGridViewColumnSortMode.NotSortable,
             };
         }
@@ -404,7 +562,11 @@ namespace StoreMapDemo
                 if (!splitReady && mapSplit.Width > 200)
                 {
                     splitReady = true;
-                    try { mapSplit.SplitterDistance = Math.Max(320, Math.Min(620, mapSplit.Width / 2 - 40)); }
+                    try
+                    {
+                        mapSplit.SplitterDistance = Math.Max(LogicalToDeviceUnits(320),
+                            Math.Min(LogicalToDeviceUnits(620), mapSplit.Width / 2 - LogicalToDeviceUnits(40)));
+                    }
                     catch { }
                 }
                 map.Focus();
@@ -711,6 +873,9 @@ namespace StoreMapDemo
                     MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             Data.Seed();
             store.Save();
+            Load += delegate { ApplyWindowSize(); LayoutSearchBar(); };
+            ResizeEnd += delegate { SaveWindowBounds(); };
+
             RebuildColumns();
             ReloadStores();
             map.FitToAll();
@@ -849,6 +1014,7 @@ namespace StoreMapDemo
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            SaveWindowBounds();
             watch.Stop();
             base.OnFormClosed(e);
         }

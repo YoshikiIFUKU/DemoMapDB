@@ -48,6 +48,21 @@ namespace StoreMapDemo
             return v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
+        public static System.Drawing.Rectangle GetRect(string key)
+        {
+            var p = Get(key, "").Split(',');
+            int x, y, w, h;
+            if (p.Length == 4 && int.TryParse(p[0], out x) && int.TryParse(p[1], out y) &&
+                int.TryParse(p[2], out w) && int.TryParse(p[3], out h))
+                return new System.Drawing.Rectangle(x, y, w, h);
+            return System.Drawing.Rectangle.Empty;
+        }
+
+        public static void SetRect(string key, System.Drawing.Rectangle r)
+        {
+            Set(key, r.X + "," + r.Y + "," + r.Width + "," + r.Height);
+        }
+
         public static void Set(string key, string value)
         {
             values[key] = value ?? "";

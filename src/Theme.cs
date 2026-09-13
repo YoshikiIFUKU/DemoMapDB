@@ -100,12 +100,38 @@ namespace StoreMapDemo
 
         // ---- 画面への適用
 
-        /// <summary>ダイアログ・メイン画面の表示時に配色を適用する</summary>
+        /// <summary>ダイアログ・メイン画面の表示時に配色を適用する（あわせて画面のDPIに合わせて拡大する）</summary>
         public static void Attach(Form f)
         {
             f.HandleCreated += delegate { TitleBar(f); };
-            f.Load += delegate { Apply(f); };
+            f.Load += delegate { ScaleToDpi(f); Apply(f); };
             f.Shown += delegate { Apply(f); };
+        }
+
+        /// <summary>
+        /// 部品の位置・大きさは 96dpi（表示倍率100%）のつもりで書いてあるので、画面のDPIに合わせて伸ばす。
+        /// 部品をすべて足し終えたあと（Load）に行う。先に設定すると、部品が無いうちに拡大が済んでしまい、
+        /// 文字だけ大きくなって枠が小さいままになるため。
+        /// </summary>
+        static void ScaleToDpi(Form f)
+        {
+            var before = f.Size;
+            f.AutoScaleDimensions = new SizeF(96F, 96F);
+            f.AutoScaleMode = AutoScaleMode.Dpi;
+            if (f.Size == before) return;       // 100% のときは何も変わらない
+
+            // 大きくなった分、画面に収めて置き直す
+            var owner = f.Owner;
+            var work = Screen.FromControl(owner ?? (Control)f).WorkingArea;
+            var size = new Size(Math.Min(f.Width, work.Width), Math.Min(f.Height, work.Height));
+            Point at;
+            if (f.StartPosition == FormStartPosition.CenterParent && owner != null)
+                at = new Point(owner.Left + (owner.Width - size.Width) / 2, owner.Top + (owner.Height - size.Height) / 2);
+            else
+                at = new Point(work.Left + (work.Width - size.Width) / 2, work.Top + (work.Height - size.Height) / 2);
+            at.X = Math.Max(work.Left, Math.Min(at.X, work.Right - size.Width));
+            at.Y = Math.Max(work.Top, Math.Min(at.Y, work.Bottom - size.Height));
+            f.Bounds = new Rectangle(at, size);
         }
 
         public static void Apply(Control root)

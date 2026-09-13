@@ -279,7 +279,7 @@ namespace StoreMapDemo
                 Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false,
                 BorderStyle = BorderStyle.FixedSingle, EnableHeadersVisualStyles = false,
-                ColumnHeadersHeight = 28, RowTemplate = { Height = 24 },
+                ColumnHeadersHeight = LogicalToDeviceUnits(28), RowTemplate = { Height = LogicalToDeviceUnits(24) },
             };
             preview.Columns.Add("state", "取り込み");
             preview.Columns.Add("name", "店舗名");
@@ -288,11 +288,11 @@ namespace StoreMapDemo
             preview.Columns.Add("fields", "その他の項目");
             preview.Columns[1].HeaderText = data.NameLabel;
             preview.Columns[2].HeaderText = data.AddressLabel;
-            preview.Columns[0].Width = 70;
-            preview.Columns[1].Width = 160;
-            preview.Columns[2].Width = 250;
-            preview.Columns[3].Width = 140;
-            preview.Columns[4].Width = 250;
+            preview.Columns[0].Width = LogicalToDeviceUnits(70);
+            preview.Columns[1].Width = LogicalToDeviceUnits(160);
+            preview.Columns[2].Width = LogicalToDeviceUnits(250);
+            preview.Columns[3].Width = LogicalToDeviceUnits(140);
+            preview.Columns[4].Width = LogicalToDeviceUnits(250);
 
             var foot = new Panel { Dock = DockStyle.Bottom, Height = 46, Width = ClientSize.Width };
             btnImport = new Button { Text = "取り込む", Left = 668, Top = 8, Width = 104, Height = 30, Tag = "primary", Enabled = false, Anchor = AnchorStyles.Right | AnchorStyles.Top };
