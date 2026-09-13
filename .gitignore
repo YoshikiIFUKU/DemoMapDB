@@ -1,0 +1,14 @@
+# ビルド結果と実行時のデータ（exe は Releases で配布する）
+dist/
+
+# データファイル・設定・ログ（exe と同じフォルダに作られる）
+demomapdb_data.xml
+demomapdb_data.xml.bak
+demomapdb_query.xml
+demomapdb_settings.ini
+demomapdb_log.txt*
+backup/
+
+# Windows
+Thumbs.db
+desktop.ini
