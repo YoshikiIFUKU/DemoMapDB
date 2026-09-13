@@ -27,6 +27,9 @@ namespace StoreMapDemo
         public const string DefaultEnvPrefix = "AMIVOICE_ST_";
         public const string NotFoundMessage = "該当する店舗がありません";
 
+        /// <summary>住所から場所を特定できない（住所が空のときも含む）ときに、標準出力へ出す文言</summary>
+        public const string NoAddressMessage = "住所から場所を特定できませんでした";
+
         class CliError : Exception { public CliError(string m) : base(m) { } }
 
         class Options
@@ -296,8 +299,7 @@ namespace StoreMapDemo
             if (o.Address.Trim().Length == 0)
             {
                 detail = "住所が空";
-                WriteErr("住所が指定されていません（--near \"東京都港区芝公園4-2-8\"）" + Environment.NewLine, o.Enc);
-                WriteEmptyResult(store.Data, o, null, "no_address");
+                WriteNoAddress(store.Data, o);
                 return Soft(o, ExitNoAddress);
             }
 
@@ -305,8 +307,7 @@ namespace StoreMapDemo
             if (!geo.Ok)
             {
                 detail = "住所を特定できない: " + o.Address;
-                WriteErr("住所から場所を特定できませんでした: " + o.Address + Environment.NewLine, o.Enc);
-                WriteEmptyResult(store.Data, o, null, "no_address");
+                WriteNoAddress(store.Data, o);
                 return Soft(o, ExitNoAddress);
             }
 
@@ -338,6 +339,22 @@ namespace StoreMapDemo
         /// 結果が0件のときの標準出力。CSVは見出しだけ、JSONは stores が空の JSON を出す
         /// （終了コードを0で返すため、呼び出し側が中身で判別できるようにする）。テキストは何も出さない。
         /// </summary>
+        /// <summary>
+        /// 住所から場所を特定できなかったとき（住所が空のときも含む）。連携側が正常時の出力として受け取れるよう、
+        /// 標準出力に「住所から場所を特定できませんでした」の1行だけを出す（見出し行は出さない。標準エラー出力にも出さない）。
+        /// JSON のときは形を崩さないよう、status と message に入れて返す。
+        /// </summary>
+        static void WriteNoAddress(StoreData data, Options o)
+        {
+            if (o.Format == "json")
+            {
+                var geo = new GeocodeResult { Query = o.Address };
+                Write(Finder.ToJson(data, geo, new List<Nearby>(), "no_address", o.Full, NoAddressMessage) + Environment.NewLine, o.Enc);
+                return;
+            }
+            Write(NoAddressMessage + Environment.NewLine, o.Enc);
+        }
+
         static void WriteEmptyResult(StoreData data, Options o, GeocodeResult geo, string status)
         {
             if (geo == null) geo = new GeocodeResult { Query = o.Address };

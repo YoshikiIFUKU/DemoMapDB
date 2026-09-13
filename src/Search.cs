@@ -133,11 +133,13 @@ namespace StoreMapDemo
         /// status は ok / no_store（該当店舗なし）/ no_address（住所を特定できない）。
         /// 店舗ごとのキーは CSV と同じく［項目の設定］で選んだものだけ。
         /// </summary>
-        public static string ToJson(StoreData data, GeocodeResult geo, List<Nearby> list, string status, bool full = false)
+        public static string ToJson(StoreData data, GeocodeResult geo, List<Nearby> list, string status, bool full = false,
+                                    string message = null)
         {
             var cols = OutputColumns(data, full);
             var sb = new StringBuilder();
             sb.Append("{\"status\":\"").Append(status ?? "ok").Append("\",");
+            if (message != null) sb.Append("\"message\":\"").Append(TextUtil.JsonEscape(message)).Append("\",");
             sb.Append("\"count\":").Append(list.Count).Append(',');
             sb.Append("\"query\":\"").Append(TextUtil.JsonEscape(geo.Query)).Append("\",");
             sb.Append("\"matched\":\"").Append(TextUtil.JsonEscape(geo.Matched)).Append("\",");
