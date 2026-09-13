@@ -143,6 +143,16 @@ namespace StoreMapDemo
         public string AddressLabel = "住所";
         public string AddressApi = "address";
 
+        // 検索結果の標準出力（CSV / JSON / テキスト）に含めるか。画面の一覧には常に表示する
+        public bool OutRank = true, OutName = true, OutDistance = true, OutDirection = true, OutAddress = true;
+        public bool OutDistanceKm, OutLat, OutLng;
+
+        /// <summary>
+        /// データの版。1: 「一覧・標準出力」が1つも指定されていないとき先頭3項目を出す決まりをやめた版。
+        /// 0（古いデータ）を読んだときは、それまでと同じ出力になるよう先頭3項目に印を付ける。
+        /// </summary>
+        public int OutputVersion;
+
         public List<FieldDef> Fields = new List<FieldDef>();
         public List<Store> Stores = new List<Store>();
 
@@ -198,14 +208,66 @@ namespace StoreMapDemo
         [XmlIgnore]
         public List<FieldDef> SortedFields { get { return Fields.OrderBy(f => f.Sort).ThenBy(f => f.Id).ToList(); } }
 
-        /// <summary>一覧と標準出力に出す項目（指定が無ければ先頭から3つ）</summary>
+        /// <summary>一覧と標準出力に出す項目（「一覧・標準出力」に印を付けたもの）</summary>
         [XmlIgnore]
         public List<FieldDef> ListFields
         {
-            get
+            get { return SortedFields.Where(f => f.InList).ToList(); }
+        }
+
+        /// <summary>検索結果だけにある項目（店舗には保存しない。地図の検索で計算する）</summary>
+        public class ResultItem
+        {
+            public string Key, Label, JsonKey;
+            public ResultItem(string key, string label, string jsonKey) { Key = key; Label = label; JsonKey = jsonKey; }
+        }
+
+        public static readonly ResultItem[] ResultItems =
+        {
+            new ResultItem("rank", "順位", "rank"),
+            new ResultItem("distance", "距離", "distance_text"),
+            new ResultItem("direction", "方角", "direction"),
+            new ResultItem("distance_km", "距離km", "distance_km"),
+            new ResultItem("lat", "緯度", "lat"),
+            new ResultItem("lng", "経度", "lng"),
+        };
+
+        /// <summary>検索結果の項目の表示名・変数名と重なるか（自由項目の名前には使えない）</summary>
+        public static bool IsResultName(string nameOrLabel)
+        {
+            string n = TextUtil.Norm(nameOrLabel);
+            return ResultItems.Any(r => TextUtil.Norm(r.Label) == n || TextUtil.Norm(r.JsonKey) == n || TextUtil.Norm(r.Key) == n);
+        }
+
+        /// <summary>固定の項目（name / address / rank / distance …）を標準出力に含めるか</summary>
+        public bool GetOutput(string key)
+        {
+            switch (key)
             {
-                var list = SortedFields.Where(f => f.InList).ToList();
-                return list.Count > 0 ? list : SortedFields.Take(3).ToList();
+                case "name": return OutName;
+                case "address": return OutAddress;
+                case "rank": return OutRank;
+                case "distance": return OutDistance;
+                case "direction": return OutDirection;
+                case "distance_km": return OutDistanceKm;
+                case "lat": return OutLat;
+                case "lng": return OutLng;
+                default: return false;
+            }
+        }
+
+        public void SetOutput(string key, bool on)
+        {
+            switch (key)
+            {
+                case "name": OutName = on; break;
+                case "address": OutAddress = on; break;
+                case "rank": OutRank = on; break;
+                case "distance": OutDistance = on; break;
+                case "direction": OutDirection = on; break;
+                case "distance_km": OutDistanceKm = on; break;
+                case "lat": OutLat = on; break;
+                case "lng": OutLng = on; break;
             }
         }
 
@@ -252,9 +314,10 @@ namespace StoreMapDemo
         public void SeedFields()
         {
             if (Fields.Count > 0) return;
-            AddField(new FieldDef { Label = "店舗コード", ApiName = CodeApi, Type = FieldTypes.Text, IsKey = true, Sort = 1 });
-            AddField(new FieldDef { Label = "電話番号", ApiName = PhoneApi, Type = FieldTypes.Phone, Sort = 2 });
-            AddField(new FieldDef { Label = "営業時間", ApiName = HoursApi, Type = FieldTypes.Hours, Sort = 3 });
+            OutputVersion = 1;
+            AddField(new FieldDef { Label = "店舗コード", ApiName = CodeApi, Type = FieldTypes.Text, IsKey = true, InList = true, Sort = 1 });
+            AddField(new FieldDef { Label = "電話番号", ApiName = PhoneApi, Type = FieldTypes.Phone, InList = true, Sort = 2 });
+            AddField(new FieldDef { Label = "営業時間", ApiName = HoursApi, Type = FieldTypes.Hours, InList = true, Sort = 3 });
             AddField(new FieldDef { Label = "備考", ApiName = MemoApi, Type = FieldTypes.TextArea, Sort = 4 });
         }
 
@@ -402,6 +465,14 @@ namespace StoreMapDemo
                 Data = (StoreData)ser.Deserialize(fs);
             }
             if (Data.Fields.Count == 0) Data.SeedFields();
+            if (Data.OutputVersion < 1)
+            {
+                // 以前は「一覧・標準出力」が未指定なら先頭3項目を出していた。出力が変わらないように印を付けておく
+                if (!Data.Fields.Any(f => f.InList))
+                    foreach (var f in Data.SortedFields.Take(3)) f.InList = true;
+                Data.OutputVersion = 1;
+                try { Save(); } catch { }
+            }
             if (Data.Stores.Count > 0 && Data.NextStoreId <= Data.Stores.Max(s => s.Id))
                 Data.NextStoreId = Data.Stores.Max(s => s.Id) + 1;
             if (Data.Fields.Count > 0 && Data.NextFieldId <= Data.Fields.Max(f => f.Id))

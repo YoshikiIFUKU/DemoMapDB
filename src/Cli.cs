@@ -324,8 +324,8 @@ namespace StoreMapDemo
 
             switch (o.Format)
             {
-                case "json": Write(Finder.ToJson(store.Data, geo, list, "ok") + Environment.NewLine, o.Enc); break;
-                case "text": Write(Finder.ToText(store.Data, list), o.Enc); break;
+                case "json": Write(Finder.ToJson(store.Data, geo, list, "ok", o.Full) + Environment.NewLine, o.Enc); break;
+                case "text": Write(Finder.ToText(store.Data, list, o.Full), o.Enc); break;
                 default: Write(Finder.ToCsv(store.Data, list, o.Full), o.Enc); break;
             }
             if (!o.Quiet && o.Format != "json")
@@ -345,7 +345,7 @@ namespace StoreMapDemo
             switch (o.Format)
             {
                 case "json":
-                    Write(Finder.ToJson(data, geo, empty, status) + Environment.NewLine, o.Enc);
+                    Write(Finder.ToJson(data, geo, empty, status, o.Full) + Environment.NewLine, o.Enc);
                     break;
                 case "text":
                     break;
@@ -374,14 +374,19 @@ namespace StoreMapDemo
         /// <summary>定義されている項目の一覧（変数名の確認用）</summary>
         static int RunFields(StoreStore store, Options o, out string detail)
         {
+            var data = store.Data;
             var sb = new StringBuilder();
             sb.AppendLine(TextUtil.CsvLine("表示名", "変数名", "型", "一覧・標準出力", "キー項目", "必須", "選択肢"));
-            foreach (var f in store.Data.SortedFields)
+            sb.AppendLine(TextUtil.CsvLine(data.NameLabel, data.NameApi, "テキスト（固定）", data.OutName ? "○" : "", "", "○", ""));
+            sb.AppendLine(TextUtil.CsvLine(data.AddressLabel, data.AddressApi, "テキスト（固定）", data.OutAddress ? "○" : "", "", "", ""));
+            foreach (var f in data.SortedFields)
                 sb.AppendLine(TextUtil.CsvLine(f.Label, f.ApiName, FieldTypes.Label(f.Type),
                     f.InList ? "○" : "", f.IsKey ? "○" : "", f.Required ? "○" : "",
                     string.Join(" / ", f.OptionList)));
+            foreach (var r in StoreData.ResultItems)
+                sb.AppendLine(TextUtil.CsvLine(r.Label, r.JsonKey, "検索結果（固定）", data.GetOutput(r.Key) ? "○" : "", "", "", ""));
             Write(sb.ToString(), o.Enc);
-            detail = store.Data.Fields.Count + "項目";
+            detail = data.Fields.Count + "項目";
             return ExitFound;
         }
 
@@ -592,7 +597,7 @@ namespace StoreMapDemo
                 "      --open-at <時刻>      その時刻に営業している店舗だけにしぼる（例: 18:30）",
                 "                            ※ 営業時間の項目（型が「営業時間」）を見ます。空・読めない値は除きません",
                 "      --json / --text       出力の形を変える（既定は CSV）",
-                "      --full                CSVに全項目と緯度経度も出す",
+                "      --full                ［項目の設定］の選択にかかわらず、全項目と距離km・緯度経度も出す",
                 "      --latlon \"35.65,139.74\"  住所の代わりに緯度経度を直接渡す",
                 "      --offline / --online  住所の変換でオンライン検索を使わない／必ず使う",
                 "      --timeout <ミリ秒>    オンライン検索の待ち時間（既定 4000）",

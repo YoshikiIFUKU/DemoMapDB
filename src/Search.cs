@@ -74,43 +74,68 @@ namespace StoreMapDemo
             return list;
         }
 
+        /// <summary>標準出力の1列（CSVの見出し・JSONのキー・値の取り出し方）</summary>
+        public class OutputColumn
+        {
+            public string Key;       // rank / name / distance / direction / address / 項目の変数名 / distance_km / lat / lng
+            public string Header;    // CSV の見出し
+            public string JsonKey;
+            public bool Numeric;     // JSON で数値として出す
+            public Func<Nearby, string> Get;
+        }
+
         /// <summary>
-        /// 結果をCSVにする（1行目は見出し）。列は 順位・店舗名・距離・方角・住所 と、
-        /// 「一覧・標準出力に含める」フィールド。full のときは全フィールドと緯度経度も出す。
+        /// 標準出力に出す列。［項目の設定］の「一覧・標準出力」に印を付けたものを、
+        /// 順位・店舗名・距離・方角・住所・自由項目・距離km・緯度・経度 の順に並べる。full のときは全部。
         /// </summary>
+        public static List<OutputColumn> OutputColumns(StoreData data, bool full)
+        {
+            var cols = new List<OutputColumn>();
+            Action<string, string, string, bool, Func<Nearby, string>> add = (key, header, json, numeric, get) =>
+            {
+                if (full || data.GetOutput(key))
+                    cols.Add(new OutputColumn { Key = key, Header = header, JsonKey = json, Numeric = numeric, Get = get });
+            };
+
+            add("rank", "順位", "rank", true, n => n.Rank.ToString(CultureInfo.InvariantCulture));
+            add("name", data.NameLabel, data.NameApi, false, n => n.Store.Name);
+            add("distance", "距離", "distance_text", false, n => n.DistanceText);
+            add("direction", "方角", "direction", false, n => n.Direction);
+            add("address", data.AddressLabel, data.AddressApi, false, n => n.Store.Address);
+            foreach (var f in full ? data.SortedFields : data.ListFields)
+            {
+                var field = f;
+                cols.Add(new OutputColumn
+                {
+                    Key = field.ApiName, Header = field.Label, JsonKey = field.ApiName,
+                    Get = n => n.Store.Get(field.ApiName),
+                });
+            }
+            add("distance_km", "距離km", "distance_km", true, n => n.DistanceKm.ToString("0.000", CultureInfo.InvariantCulture));
+            add("lat", "緯度", "lat", true, n => Num(n.Store.Lat));
+            add("lng", "経度", "lng", true, n => Num(n.Store.Lng));
+            return cols;
+        }
+
+        /// <summary>結果をCSVにする（1行目は見出し）</summary>
         public static string ToCsv(StoreData data, List<Nearby> list, bool full)
         {
-            var fields = full ? data.SortedFields : data.ListFields;
-            var head = new List<string> { "順位", data.NameLabel, "距離", "方角", data.AddressLabel };
-            head.AddRange(fields.Select(f => f.Label));
-            if (full) { head.Add("距離km"); head.Add("緯度"); head.Add("経度"); }
-
+            var cols = OutputColumns(data, full);
             var sb = new StringBuilder();
-            sb.AppendLine(TextUtil.CsvLine(head));
+            sb.AppendLine(TextUtil.CsvLine(cols.Select(c => c.Header)));
             foreach (var n in list)
-            {
-                var cells = new List<string>
-                {
-                    n.Rank.ToString(), n.Store.Name, n.DistanceText, n.Direction, n.Store.Address,
-                };
-                cells.AddRange(fields.Select(f => n.Store.Get(f.ApiName)));
-                if (full)
-                {
-                    cells.Add(n.DistanceKm.ToString("0.000", CultureInfo.InvariantCulture));
-                    cells.Add(n.Store.Lat.ToString("0.#####", CultureInfo.InvariantCulture));
-                    cells.Add(n.Store.Lng.ToString("0.#####", CultureInfo.InvariantCulture));
-                }
-                sb.AppendLine(TextUtil.CsvLine(cells));
-            }
+                sb.AppendLine(TextUtil.CsvLine(cols.Select(c => c.Get(n))));
             return sb.ToString();
         }
 
         /// <summary>
         /// 結果をJSONにする（音声認識システム側で読みやすい形）。
         /// status は ok / no_store（該当店舗なし）/ no_address（住所を特定できない）。
+        /// 店舗ごとのキーは CSV と同じく［項目の設定］で選んだものだけ。
         /// </summary>
-        public static string ToJson(StoreData data, GeocodeResult geo, List<Nearby> list, string status)
+        public static string ToJson(StoreData data, GeocodeResult geo, List<Nearby> list, string status, bool full = false)
         {
+            var cols = OutputColumns(data, full);
             var sb = new StringBuilder();
             sb.Append("{\"status\":\"").Append(status ?? "ok").Append("\",");
             sb.Append("\"count\":").Append(list.Count).Append(',');
@@ -122,21 +147,16 @@ namespace StoreMapDemo
             sb.Append("\"stores\":[");
             for (int i = 0; i < list.Count; i++)
             {
-                var n = list[i];
-                var s = n.Store;
                 if (i > 0) sb.Append(',');
-                sb.Append("{\"rank\":").Append(n.Rank)
-                  .Append(",\"").Append(TextUtil.JsonEscape(data.NameApi)).Append("\":\"")
-                  .Append(TextUtil.JsonEscape(s.Name)).Append("\"")
-                  .Append(",\"").Append(TextUtil.JsonEscape(data.AddressApi)).Append("\":\"")
-                  .Append(TextUtil.JsonEscape(s.Address)).Append("\"")
-                  .Append(",\"distance_km\":").Append(n.DistanceKm.ToString("0.000", CultureInfo.InvariantCulture))
-                  .Append(",\"distance_text\":\"").Append(n.DistanceText).Append("\"")
-                  .Append(",\"direction\":\"").Append(n.Direction).Append("\"")
-                  .Append(",\"lat\":").Append(Num(s.Lat)).Append(",\"lng\":").Append(Num(s.Lng));
-                foreach (var f in data.SortedFields)
-                    sb.Append(",\"").Append(TextUtil.JsonEscape(f.ApiName)).Append("\":\"")
-                      .Append(TextUtil.JsonEscape(s.Get(f.ApiName))).Append("\"");
+                sb.Append('{');
+                for (int c = 0; c < cols.Count; c++)
+                {
+                    if (c > 0) sb.Append(',');
+                    sb.Append('"').Append(TextUtil.JsonEscape(cols[c].JsonKey)).Append("\":");
+                    string v = cols[c].Get(list[i]);
+                    if (cols[c].Numeric) sb.Append(v);
+                    else sb.Append('"').Append(TextUtil.JsonEscape(v)).Append('"');
+                }
                 sb.Append('}');
             }
             sb.Append("]}");
@@ -145,22 +165,27 @@ namespace StoreMapDemo
 
         static string Num(double d) { return d.ToString("0.#####", CultureInfo.InvariantCulture); }
 
-        /// <summary>オペレータが読み上げやすい形（1店舗1行）</summary>
-        public static string ToText(StoreData data, List<Nearby> list)
+        /// <summary>オペレータが読み上げやすい形（1店舗1行。［項目の設定］で選んだ項目だけ）</summary>
+        public static string ToText(StoreData data, List<Nearby> list, bool full = false)
         {
-            var fields = data.ListFields;
+            var cols = OutputColumns(data, full);
             var sb = new StringBuilder();
             foreach (var n in list)
             {
-                sb.Append(n.Rank).Append(". ").Append(n.Store.Name)
-                  .Append("（").Append(n.DistanceText).Append(" ").Append(n.Direction).Append("）")
-                  .Append(" ").Append(n.Store.Address);
-                foreach (var f in fields)
+                var parts = new List<string>();
+                string near = string.Join(" ", cols.Where(c => c.Key == "distance" || c.Key == "direction")
+                                                   .Select(c => c.Get(n)).ToArray());
+                foreach (var c in cols)
                 {
-                    string v = n.Store.Get(f.ApiName);
-                    if (v.Length > 0) sb.Append(" ").Append(v);
+                    if (c.Key == "distance" || c.Key == "direction") continue;
+                    string v = c.Get(n);
+                    if (v.Length == 0) continue;
+                    if (c.Key == "rank") { parts.Add(v + "."); continue; }
+                    parts.Add(v);
+                    if (c.Key == "name" && near.Length > 0) { parts[parts.Count - 1] += "（" + near + "）"; near = ""; }
                 }
-                sb.AppendLine();
+                if (near.Length > 0) parts.Add("（" + near + "）");
+                sb.AppendLine(string.Join(" ", parts.ToArray()));
             }
             return sb.ToString();
         }

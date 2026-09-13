@@ -414,7 +414,7 @@ namespace StoreMapDemo
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Vertical,
                 SplitterWidth = 6,
-                FixedPanel = FixedPanel.Panel1,   // 幅を変えても一覧の幅は保つ
+                // 一覧と地図の幅の比率を保ったまま、ウィンドウの大きさに合わせて両方広げる
             };
             mapSplit = split;
 
@@ -474,6 +474,8 @@ namespace StoreMapDemo
                 BorderStyle = BorderStyle.FixedSingle,
                 EnableHeadersVisualStyles = false,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+                // 列は画面の幅いっぱいに広げる（狭いときは最小幅で止めて横スクロール）
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 // 表の列幅・行の高さは画面の自動拡大の対象外なので、DPI の倍率を自分で掛ける
                 ColumnHeadersHeight = LogicalToDeviceUnits(30),
                 RowTemplate = { Height = LogicalToDeviceUnits(26) },
@@ -485,6 +487,8 @@ namespace StoreMapDemo
             return new DataGridViewTextBoxColumn
             {
                 Name = name, HeaderText = header, Width = LogicalToDeviceUnits(width),
+                FillWeight = width,                                                   // 広げるときの配分
+                MinimumWidth = LogicalToDeviceUnits(Math.Max(40, width * 2 / 3)),     // 狭いときもここまでは保つ
                 SortMode = DataGridViewColumnSortMode.NotSortable,
             };
         }
@@ -564,8 +568,8 @@ namespace StoreMapDemo
                     splitReady = true;
                     try
                     {
-                        mapSplit.SplitterDistance = Math.Max(LogicalToDeviceUnits(320),
-                            Math.Min(LogicalToDeviceUnits(620), mapSplit.Width / 2 - LogicalToDeviceUnits(40)));
+                        // 一覧は画面幅の4割（上限は設けない）。あとはウィンドウの大きさに合わせて比率を保つ
+                        mapSplit.SplitterDistance = Math.Max(LogicalToDeviceUnits(320), (int)(mapSplit.Width * 0.4));
                     }
                     catch { }
                 }

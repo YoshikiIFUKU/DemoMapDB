@@ -29,11 +29,12 @@ namespace StoreMapDemo
             Font = new Font("Yu Gothic UI", 9f);
             Theme.Attach(this);
 
-            var head = new Panel { Dock = DockStyle.Top, Height = 44, Tag = "panel" };
+            var head = new Panel { Dock = DockStyle.Top, Height = 54, Tag = "panel" };
             head.Controls.Add(new Label
             {
-                Left = 12, Top = 13, Width = 730, Tag = "sub",
-                Text = "店舗名・住所・緯度経度は地図に必要なため固定です（店舗名と住所は名前だけ変えられます）。それ以外の項目は自由に増やせます。",
+                Left = 12, Top = 8, Width = 740, Height = 40, Tag = "sub",
+                Text = "「一覧・標準出力」の欄をクリックすると、標準出力（CSV / JSON / テキスト）に含めるかを切り替えられます。\r\n" +
+                       "店舗名・住所は名前だけ変えられます。順位・距離などの検索結果の項目と店舗名・住所は、画面の一覧には常に表示します。",
             });
 
             grid = new DataGridView
@@ -48,6 +49,7 @@ namespace StoreMapDemo
                 MultiSelect = false,
                 BorderStyle = BorderStyle.FixedSingle,
                 EnableHeadersVisualStyles = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,   // 画面の幅いっぱいに列を広げる
                 ColumnHeadersHeight = LogicalToDeviceUnits(30),
                 RowTemplate = { Height = LogicalToDeviceUnits(26) },
             };
@@ -58,7 +60,14 @@ namespace StoreMapDemo
             grid.Columns.Add(C("key", "キー項目", 80));
             grid.Columns.Add(C("req", "必須", 60));
             grid.Columns.Add(C("options", "選択肢", 200));
-            grid.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) Edit(Selected()); };
+            grid.CellDoubleClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && grid.Columns[e.ColumnIndex].Name != "list") Edit(Selected());
+            };
+            grid.CellClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && grid.Columns[e.ColumnIndex].Name == "list") ToggleOutput(e.RowIndex);
+            };
 
             var foot = new Panel { Dock = DockStyle.Bottom, Height = 46, Width = ClientSize.Width };
             var add = new Button { Text = "追加", Left = 12, Top = 9, Width = 76, Height = 28, Tag = "primary" };
@@ -88,6 +97,7 @@ namespace StoreMapDemo
             return new DataGridViewTextBoxColumn
             {
                 Name = name, HeaderText = header, Width = LogicalToDeviceUnits(width),
+                FillWeight = width, MinimumWidth = LogicalToDeviceUnits(Math.Max(40, width * 2 / 3)),
                 SortMode = DataGridViewColumnSortMode.NotSortable,
             };
         }
@@ -108,28 +118,56 @@ namespace StoreMapDemo
                     string.Join(" / ", f.OptionList));
                 grid.Rows[i].Tag = f;
             }
+
+            // 検索結果だけにある項目（順位・距離など）。標準出力に含めるかだけを切り替えられる
+            foreach (var r in StoreData.ResultItems)
+            {
+                int i = grid.Rows.Add(r.Label, r.JsonKey, "検索結果（固定）", data.GetOutput(r.Key) ? "○" : "", "", "", "");
+                grid.Rows[i].Tag = "result:" + r.Key;
+                grid.Rows[i].DefaultCellStyle.ForeColor = Theme.SubText;
+            }
             if (keep >= 0 && keep < grid.Rows.Count) grid.CurrentCell = grid.Rows[keep].Cells[0];
             Theme.StyleGrid(grid);
         }
 
         void AddBuiltinRow(string kind, string label, string api)
         {
-            int i = grid.Rows.Add(label, api, "テキスト（固定）", "○", "", kind == "name" ? "○" : "", "");
+            int i = grid.Rows.Add(label, api, "テキスト（固定）", data.GetOutput(kind) ? "○" : "", "", kind == "name" ? "○" : "", "");
             grid.Rows[i].Tag = kind;
             grid.Rows[i].DefaultCellStyle.ForeColor = Theme.SubText;
         }
 
         FieldDef Selected() { return grid.CurrentRow == null ? null : grid.CurrentRow.Tag as FieldDef; }
 
-        /// <summary>選ばれている行が固定項目なら "name" / "address"、そうでなければ null</summary>
+        /// <summary>選ばれている行が固定項目なら "name" / "address" / "result:rank" など、そうでなければ null</summary>
         string SelectedBuiltin() { return grid.CurrentRow == null ? null : grid.CurrentRow.Tag as string; }
+
+        /// <summary>「一覧・標準出力」の印を付け外しする</summary>
+        void ToggleOutput(int rowIndex)
+        {
+            var tag = grid.Rows[rowIndex].Tag;
+            var f = tag as FieldDef;
+            string key = tag as string;
+            if (f != null) f.InList = !f.InList;
+            else if (key != null)
+            {
+                if (key.StartsWith("result:")) key = key.Substring(7);
+                data.SetOutput(key, !data.GetOutput(key));
+            }
+            else return;
+            Changed = true;
+            Reload();
+            grid.CurrentCell = grid.Rows[rowIndex].Cells[0];
+        }
 
         void Edit(FieldDef target)
         {
             string builtin = SelectedBuiltin();
             if (target == null && builtin != null && !addingNew)
             {
-                EditBuiltin(builtin);
+                // 検索結果の項目は名前を変えられないので、標準出力の印だけ切り替える
+                if (builtin.StartsWith("result:")) ToggleOutput(grid.CurrentRow.Index);
+                else EditBuiltin(builtin);
                 return;
             }
             using (var dlg = new FieldEditForm(data, target))
@@ -178,7 +216,7 @@ namespace StoreMapDemo
         {
             if (SelectedBuiltin() != null)
             {
-                MessageBox.Show("店舗名と住所は地図に必要なので削除できません。表示名と変数名は変えられます。",
+                MessageBox.Show("固定の項目は削除できません。標準出力に出したくない場合は「一覧・標準出力」の印を外してください。",
                     Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -318,9 +356,14 @@ namespace StoreMapDemo
                 Warn("「" + label + "」は固定項目（店舗名・住所・緯度・経度）の名前なので使えません。", tbLabel);
                 return false;
             }
-            if (data.IsNameName(api) || data.IsAddressName(api))
+            if (data.IsNameName(api) || data.IsAddressName(api) || StoreData.IsResultName(api))
             {
                 Warn("「" + api + "」は固定項目の変数名なので使えません。", tbApi);
+                return false;
+            }
+            if (StoreData.IsResultName(label))
+            {
+                Warn("「" + label + "」は検索結果の項目（順位・距離・方角・距離km・緯度・経度）の名前なので使えません。", tbLabel);
                 return false;
             }
             foreach (var f in data.Fields)
@@ -409,7 +452,8 @@ namespace StoreMapDemo
             string otherApi = isName ? data.AddressApi : data.NameApi;
             if (TextUtil.Norm(label) == TextUtil.Norm(otherLabel)) return Warn("もう一方の固定項目と同じ表示名は使えません。", tbLabel);
             if (api == otherApi) return Warn("もう一方の固定項目と同じ変数名は使えません。", tbApi);
-            if (label == StoreCsv.ColLat || label == StoreCsv.ColLng) return Warn("緯度・経度と同じ表示名は使えません。", tbLabel);
+            if (StoreData.IsResultName(label)) return Warn("検索結果の項目（順位・距離・方角・距離km・緯度・経度）と同じ表示名は使えません。", tbLabel);
+            if (StoreData.IsResultName(api)) return Warn("検索結果の項目と同じ変数名は使えません。", tbApi);
             foreach (var f in data.Fields)
             {
                 if (TextUtil.Norm(f.Label) == TextUtil.Norm(label)) return Warn("同じ表示名の項目があります: " + f.Label, tbLabel);
